@@ -43,22 +43,36 @@ CS4680Project2/
    pip install -r requirements.txt
    ```
 
-3. **Set up environment variables**:
-   - Copy `.env.example` to `.env`
-   - Edit `.env` and add your API key for at least one LLM provider:
-     ```env
-     # Choose one provider:
-     OPENAI_API_KEY=your_key_here
-     LLM_PROVIDER=openai
-     
-     # OR
-     ANTHROPIC_API_KEY=your_key_here
-     LLM_PROVIDER=anthropic
-     
-     # OR
-     GOOGLE_API_KEY=your_key_here
-     LLM_PROVIDER=google
-     ```
+3. **Set up your API key**:
+   
+   **Option 1: Using .env file (Recommended)**
+   ```bash
+   # Copy the example file
+   cp .env.example .env
+   
+   # Edit .env and add your API key
+   # For file renaming agent (ai_file_renamer.py), you only need:
+   OPENAI_API_KEY=your_actual_api_key_here
+   
+   # For general agent (main.py), also set:
+   LLM_PROVIDER=openai  # or anthropic, or google
+   ```
+   
+   **Option 2: Using environment variables**
+   ```bash
+   # Windows (PowerShell)
+   $env:OPENAI_API_KEY="your_actual_api_key_here"
+   
+   # Linux/Mac
+   export OPENAI_API_KEY="your_actual_api_key_here"
+   ```
+   
+   **Getting an API Key:**
+   - **OpenAI**: Get your key from https://platform.openai.com/api-keys
+   - **Anthropic**: Get your key from https://console.anthropic.com/
+   - **Google**: Get your key from https://makersuite.google.com/app/apikey
+   
+   **Note**: The `.env` file is already in `.gitignore` and will not be committed to git.
 
 ## Usage
 
@@ -81,16 +95,11 @@ python ai_file_renamer.py
 This agent uses **OpenAI's `gpt-4o-mini` model** (a cost-effective "nano"-style model) specifically optimized for JSON planning tasks. It's perfect for this use case since we need fast, structured output rather than deep reasoning.
 
 **Setup:**
-1. Set your OpenAI API key:
-   ```bash
-   # Windows (PowerShell)
-   $env:OPENAI_API_KEY="your_key_here"
-   
-   # Linux/Mac
-   export OPENAI_API_KEY="your_key_here"
-   ```
+1. Set your OpenAI API key (see Installation section above for detailed instructions)
+   - **Easiest**: Create a `.env` file with `OPENAI_API_KEY=your_key_here`
+   - **Alternative**: Set environment variable `OPENAI_API_KEY`
 
-2. The agent uses `gpt-4o-mini` by default (configurable via `OPENAI_MODEL` env var)
+2. The agent uses `gpt-4o-mini` by default (configurable via `OPENAI_MODEL` in `.env`)
 
 **Workflow:**
 1. Asks for a directory to analyze
