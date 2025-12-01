@@ -1,4 +1,4 @@
-"""LLM Interface for file renaming - focused module using OpenAI's GPT-4o model."""
+"""LLM Interface for file renaming - focused module using OpenAI's GPT-5.1 model."""
 import os
 import json
 import time
@@ -10,8 +10,8 @@ from openai import RateLimitError, APIError
 # Load environment variables from .env file
 load_dotenv()
 
-# Use OpenAI's GPT-4o model for JSON planning
-MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-4o")  # Default to gpt-4o
+# Use OpenAI's GPT-5.1 model for JSON planning
+MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-5.1")  # Default to gpt-5.1
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 

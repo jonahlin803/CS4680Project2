@@ -4,7 +4,7 @@ An intelligent AI agent that uses Large Language Models (LLMs) to interpret natu
 
 ## Features
 
-- **LLM Integration**: Connects to OpenAI API (GPT-4o) for intelligent planning
+- **LLM Integration**: Connects to OpenAI API (GPT-5.1) for intelligent planning
 - **Action Interpreter/Executor**: Parses LLM JSON responses and executes file rename operations
 - **Terminal-Based UI**: Clean, user-friendly command-line interface
 - **Safety & Error Handling**: Validates all renames before execution, requires confirmations, and handles errors gracefully
@@ -68,19 +68,19 @@ Run the file renaming agent:
 python ai_file_renamer.py
 ```
 
-This agent uses **OpenAI's `gpt-4o` model** for intelligent file rename planning. The model receives your natural language instruction, analyzes the files in the directory, and generates a structured rename plan.
+This agent uses **OpenAI's `gpt-5.1` model** for intelligent file rename planning. The model receives your natural language instruction, analyzes the files in the directory, and generates a structured rename plan.
 
 **Setup:**
 1. Set your OpenAI API key (see Installation section above for detailed instructions)
    - **Easiest**: Create a `.env` file with `OPENAI_API_KEY=your_key_here`
    - **Alternative**: Set environment variable `OPENAI_API_KEY`
 
-2. The agent uses `gpt-4o` by default (configurable via `OPENAI_MODEL` in `.env`)
+2. The agent uses `gpt-5.1` by default (configurable via `OPENAI_MODEL` in `.env`)
 
 **Workflow:**
 1. Asks for a directory to analyze
 2. Asks for a natural-language rename instruction
-3. Calls the LLM (gpt-4o) to generate a structured rename plan as JSON
+3. Calls the LLM (gpt-5.1) to generate a structured rename plan as JSON
 4. Validates the plan (checks file existence, prevents collisions, etc.)
 5. Shows a preview of planned renames
 6. Asks for confirmation before executing
@@ -148,7 +148,7 @@ The agent includes several safety mechanisms:
 ## Components
 
 ### LLM Interface (`llm_interface.py`)
-- Connects to OpenAI API using GPT-4o model
+- Connects to OpenAI API using GPT-5.1 model
 - Uses `response_format={"type": "json_object"}` for structured JSON output
 - Handles API errors and rate limiting with retry logic
 - Builds structured prompts with file metadata (creation dates, etc.)
@@ -166,8 +166,8 @@ The agent includes several safety mechanisms:
 Edit `.env` file to configure:
 
 - **API Key**: Set your `OPENAI_API_KEY`
-- **Model**: Optionally specify which model to use (defaults to `gpt-4o`)
-  - Example: `OPENAI_MODEL=gpt-4o`
+- **Model**: Optionally specify which model to use (defaults to `gpt-5.1`)
+  - Example: `OPENAI_MODEL=gpt-5.1`
 
 ## Logging
 
@@ -224,7 +224,7 @@ The file renaming agent includes several advanced features:
 This project fully meets all requirements for CS4680 Project 2:
 
 ✅ **LLM Integration Module**
-- Connects to OpenAI API (GPT-4o)
+- Connects to OpenAI API (GPT-5.1)
 - Sends prompts and receives responses
 - Handles API errors and rate limiting with retry logic
 
