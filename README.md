@@ -78,13 +78,14 @@ This agent uses **OpenAI's `gpt-5.1` model** for intelligent file rename plannin
 2. The agent uses `gpt-5.1` by default (configurable via `OPENAI_MODEL` in `.env`)
 
 **Workflow:**
-1. Asks for a directory to analyze
-2. Asks for a natural-language rename instruction
+1. Asks for a directory to analyze (type 'q' to quit)
+2. Asks for a natural-language rename instruction (type 'q' to return to directory selection)
 3. Calls the LLM (gpt-5.1) to generate a structured rename plan as JSON
 4. Validates the plan (checks file existence, prevents collisions, etc.)
 5. Shows a preview of planned renames
 6. Asks for confirmation before executing
 7. Executes renames and logs results
+8. Returns to step 1 for continuous operation (type 'q' to quit)
 
 **Example usage:**
 ```bash
@@ -118,32 +119,36 @@ Actions logged to logs/2025-11-28_15-32-10.log
 
 **Advanced Examples:**
 - `"Rename all files that start with IMG and change it to image"` - Pattern matching with prefix replacement
-- `"Rename all jpg files to j_#.jpg in order of dates created"` - Date-based ordering
+- `"Rename all jpg files to j_#.jpg in order of dates created"` - Date-based ordering (creation time)
+- `"Order Imagen_x files by date modified"` - Sorting by modification time
 - `"Rename all jpg files to j_#.jpg in reverse order of dates"` - Reverse date ordering
+- `"Reorder files by size, smallest to largest"` - Size-based sorting
 - `"Scan for all files with ordered numbering, group them by type, then reverse all the numbers"` - Complex pattern operations
 - `"Rename file1.txt and file2.txt to file_1.txt and file_2.txt"` - Preserves exact numbering format
 
 **How it works:**
-- The LLM receives a structured prompt with the directory, user instruction, and file list
+- The LLM receives a structured prompt with the directory, user instruction, and file list with complete metadata
+- Each file includes: creation_time, modification_time, access_time, size, and size_human
+- The LLM analyzes your instruction to determine sorting criteria, metadata fields, and sort direction
 - Uses OpenAI's `response_format={"type": "json_object"}` to ensure valid JSON output
 - The model returns a JSON object with `{"renames": [{"old": "...", "new": "..."}]}`
 - The agent validates, previews, and executes the plan safely
-- For date ordering, files are pre-sorted and numbered sequentially
 - Pattern preservation ensures leading zeros and formatting are maintained
+- Complex operations (swaps, conflicts) are handled with temporary names
 
 ## Safety Features
 
 The agent includes several safety mechanisms:
 
-1. **Action Validation**: All actions are validated before execution
-2. **Confirmation Prompts**: Destructive operations require user confirmation:
-   - File deletions
-   - Dangerous system commands (rm, format, shutdown, etc.)
-   - Destructive API calls (DELETE, PUT, PATCH)
-   - Database operations that modify data
-3. **Command Sanitization**: System commands are sanitized to prevent injection attacks
+1. **Action Validation**: All rename operations are validated before execution
+   - Checks that source files exist
+   - Prevents duplicate target filenames
+   - Validates filename legality (no illegal characters)
+   - Handles conflicts with temporary names
+2. **Confirmation Prompts**: All rename operations require user confirmation before execution
+3. **Conflict Handling**: Automatically uses temporary names for complex operations (swaps, permutations) to prevent data loss
 4. **Error Handling**: Comprehensive error handling with graceful degradation
-5. **Logging**: All actions are logged to `logs/agent.log` for auditability
+5. **Logging**: All actions are logged to timestamped files in `logs/` directory for auditability
 
 ## Components
 
@@ -151,7 +156,8 @@ The agent includes several safety mechanisms:
 - Connects to OpenAI API using GPT-5.1 model
 - Uses `response_format={"type": "json_object"}` for structured JSON output
 - Handles API errors and rate limiting with retry logic
-- Builds structured prompts with file metadata (creation dates, etc.)
+- Builds structured prompts with complete file metadata (creation_time, modification_time, access_time, size)
+- LLM analyzes instructions and makes all sorting/ordering decisions
 
 ### File Renaming Agent (`ai_file_renamer.py`)
 - Main entry point for the application
@@ -198,10 +204,12 @@ The file renaming agent includes several advanced features:
 - Maintains exact numbering format from original filenames
 - Handles underscores, dashes, and other separators
 
-### Date-Based Ordering
-- Automatically sorts files by creation date when requested
-- Supports both chronological (oldest first) and reverse (newest first) ordering
+### Intelligent Sorting & Ordering
+- LLM analyzes your instruction to determine sorting criteria (date, size, etc.)
+- Supports sorting by creation_time, modification_time, access_time, or size
+- LLM determines sort direction (ascending/descending, oldest/newest first, smallest/largest first)
 - Ensures correct sequential numbering based on sorted order
+- No hardcoded keyword detection - LLM handles all sorting decisions
 
 ### Large Directory Support
 - Automatically filters by file type when mentioned in instruction (e.g., "jpg files")
@@ -209,7 +217,9 @@ The file renaming agent includes several advanced features:
 - Warns user and processes all files even if only a sample is shown to LLM
 
 ### Complex Operations
-- Handles file swaps and reversals with temporary names
+- Handles file swaps, reversals, and conflicts with temporary names
+- Automatically detects when target filenames already exist
+- Uses two-phase renaming (temp names → final names) to prevent data loss
 - Groups files by pattern for batch operations
 - Validates all renames before execution to prevent collisions
 
