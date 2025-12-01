@@ -34,8 +34,21 @@ Core Rules:
 5. If a warning says only some files are shown, apply the instruction pattern to ALL files in the directory (extrapolate the pattern).
 6. Preserve file extensions unless the user explicitly asks to change them.
 7. Preserve the exact format of numbers/patterns from original filenames (including leading zeros, underscores, etc.) unless the user wants them changed.
-8. CRITICAL: If a note says files are already sorted in a specific order, you MUST number them sequentially in that exact order (first file = 1, second file = 2, etc.). Do NOT reorder the files.
-9. If the user's request is unclear or impossible, return an empty list: { "renames": [] }
+8. Each file object includes complete metadata: creation_time, modification_time, access_time, size, and size_human. 
+   YOU must analyze the user's instruction and determine:
+   - What sorting/ordering criteria to use (date, size, etc.)
+   - Which metadata field to use (creation_time, modification_time, access_time, or size)
+   - What order (ascending/descending, oldest/newest first, smallest/largest first)
+   - Then sort the files accordingly and number them sequentially
+9. When the user says "order X files by Y" or "sort by Y", analyze Y to determine:
+   - If Y mentions "date", "time", "created", "modified", "access" → use the appropriate time field
+   - If Y mentions "size", "largest", "smallest" → use the size field
+   - Determine the direction (ascending/descending) from words like "oldest", "newest", "smallest", "largest", "reverse"
+   - Sort ALL files by that criteria, then rename them sequentially (1, 2, 3, etc.) preserving the prefix/pattern
+10. Example: "order Imagen_x files by date modified" means:
+    - Sort all files by modification_time (oldest modified first, unless "newest" is mentioned)
+    - Rename them to Imagen_1.jpg, Imagen_2.jpg, etc. in that sorted order
+11. If the user's request is unclear or impossible, return an empty list: { "renames": [] }
 
 Follow the user's instruction precisely and apply it to all matching files. Handle any edge cases, swaps, reversals, or complex operations as needed to fulfill the request.
 
@@ -73,12 +86,6 @@ def build_user_prompt(directory: str, instruction: str, files: List) -> str:
     else:
         files_truncated = False
     
-    # Check if instruction mentions date ordering
-    instruction_lower = instruction.lower()
-    date_keywords = ['date', 'time', 'created', 'creation', 'oldest', 'newest', 'chronological', 'order by']
-    mentions_date = any(keyword in instruction_lower for keyword in date_keywords)
-    is_reverse = 'reverse' in instruction_lower
-    
     payload = {
         "directory": directory,
         "instruction": instruction,
@@ -87,14 +94,9 @@ def build_user_prompt(directory: str, instruction: str, files: List) -> str:
     
     # Add warning if files were truncated
     if files_truncated:
-        payload["warning"] = f"Only showing first {MAX_FILES_FOR_LLM} of {total_files} files. Apply the instruction to ALL {total_files} files in the directory."
+        payload["warning"] = f"Only showing first {MAX_FILES_FOR_LLM} of {total_files} files. Apply the instruction pattern to ALL {total_files} files in the directory."
     
-    # Add a note if files are sorted by date
-    if mentions_date and files_data and "creation_time" in files_data[0]:
-        order_note = "reverse order (newest first)" if is_reverse else "chronological order (oldest first)"
-        # Show creation times in the note to make it crystal clear (limit to first 10 for readability)
-        file_order = "\n".join([f"  {i+1}. {f['name']} (created: {f['creation_time']})" for i, f in enumerate(files_data[:10])])
-        payload["note"] = f"Files are already sorted by creation_time in {order_note}. Number them sequentially in this exact order:\n{file_order}\nThe first file in the list should get number 1, the second gets number 2, etc."
+    # All metadata is already included in files_data - let the LLM analyze and decide how to sort/order
     
     return json.dumps(payload, indent=2)
 

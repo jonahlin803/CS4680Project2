@@ -39,20 +39,25 @@ def setup_logger() -> logging.Logger:
 
 # ------------- Core functions -------------
 
-def ask_directory() -> Path:
-    """Prompt user for directory path and validate it."""
+def ask_directory() -> Optional[Path]:
+    """Prompt user for directory path and validate it. Returns None if user quits."""
     while True:
-        directory = input("Enter directory to analyze:\n> ").strip()
+        directory = input("Enter directory to analyze (or 'q' to quit):\n> ").strip()
+        if directory.lower() == 'q':
+            return None
         path = Path(directory).expanduser().resolve()
         if path.is_dir():
             return path
         print("That path is not a valid directory. Please try again.\n")
 
 
-def ask_instruction() -> str:
-    """Prompt user for rename instruction."""
-    print("\nEnter your rename instruction (natural language):")
-    return input("> ").strip()
+def ask_instruction() -> Optional[str]:
+    """Prompt user for rename instruction. Returns None if user quits."""
+    print("\nEnter your rename instruction (natural language, or 'q' to quit):")
+    instruction = input("> ").strip()
+    if instruction.lower() == 'q':
+        return None
+    return instruction
 
 
 def list_files_in_directory(directory: Path, extensions: Optional[List[str]] = None) -> List[Dict[str, Any]]:
@@ -73,14 +78,20 @@ def list_files_in_directory(directory: Path, extensions: Optional[List[str]] = N
         normalized_exts = [ext if ext.startswith('.') else f'.{ext}' for ext in extensions]
         file_objects = [f for f in file_objects if f.suffix.lower() in normalized_exts]
     
-    # Get file info with metadata
+    # Get file info with metadata (all available metadata)
     files_info = []
     for f in file_objects:
         stat = f.stat()
         files_info.append({
             "name": f.name,
             "creation_time": datetime.fromtimestamp(stat.st_ctime).isoformat(),
-            "size": stat.st_size
+            "creation_timestamp": stat.st_ctime,  # Raw timestamp for sorting
+            "modification_time": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+            "modification_timestamp": stat.st_mtime,  # Raw timestamp for sorting
+            "access_time": datetime.fromtimestamp(stat.st_atime).isoformat(),
+            "access_timestamp": stat.st_atime,  # Raw timestamp for sorting
+            "size": stat.st_size,
+            "size_human": f"{stat.st_size:,} bytes"  # Human-readable size
         })
     
     # Sort by name by default
@@ -100,114 +111,22 @@ def call_llm_for_rename_plan(
     Args:
         directory: Target directory path
         instruction: User's natural language instruction
-        files: List of file info dictionaries with 'name' and 'creation_time'
+        files: List of file info dictionaries with all metadata (name, creation_time, modification_time, access_time, size, etc.)
     
     Returns:
         Dictionary with 'renames' list containing old/new mappings
     """
     print("\nContacting LLM to generate rename plan...")
     
-    # Check if instruction mentions date/time ordering
-    instruction_lower = instruction.lower()
-    date_keywords = ['date', 'time', 'created', 'creation', 'oldest', 'newest', 'chronological', 'order by']
-    should_order_by_date = any(keyword in instruction_lower for keyword in date_keywords)
-    is_reverse = 'reverse' in instruction_lower
-    
-    # Pre-sort files by creation_time if date ordering is requested
-    if should_order_by_date:
-        # Sort by creation_time (oldest first by default)
-        files_sorted = sorted(files, key=lambda x: x.get("creation_time", ""))
-        # Reverse if user wants reverse order
-        if is_reverse:
-            files_sorted = list(reversed(files_sorted))
-        files = files_sorted
-    
     try:
-        # Use the focused LLM interface module
+        # Use the focused LLM interface module - let LLM handle all sorting/ordering decisions
         plan = get_rename_plan_from_llm(str(directory), instruction, files)
-        
-        # If date ordering was requested, fix the numbering to match the sorted order
-        if should_order_by_date and plan.get("renames"):
-            plan = _fix_date_ordered_numbering(plan, files, instruction)
-        
         return plan
     except ValueError as e:
         # Re-raise ValueError as-is
         raise
     except Exception as e:
         raise ValueError(f"Error calling LLM: {e}")
-
-
-def _fix_date_ordered_numbering(plan: Dict, sorted_files: List[Dict[str, Any]], instruction: str) -> Dict:
-    """
-    Fix numbering in the rename plan to match the sorted file order.
-    
-    Args:
-        plan: LLM-generated rename plan
-        sorted_files: Files already sorted by date
-        instruction: User's instruction (to extract the pattern)
-    
-    Returns:
-        Fixed rename plan with correct numbering
-    """
-    import re
-    
-    if not plan.get("renames") or not sorted_files:
-        return plan
-    
-    # Extract the pattern from the LLM's response (e.g., "j_1.jpg" -> "j_{}.jpg")
-    first_rename = plan["renames"][0]
-    new_name_template = first_rename.get("new", "")
-    
-    prefix = ""
-    ext = ""
-    
-    # Try to extract prefix and extension from the new name
-    # Pattern: "j_1.jpg" -> prefix="j", ext=".jpg"
-    match = re.match(r'^(.+?)[_\-]?\d+(\..+)?$', new_name_template)
-    if match:
-        prefix = match.group(1).rstrip('_-')
-        if match.group(2):
-            ext = match.group(2)
-        else:
-            # Get extension from original file
-            first_file = sorted_files[0]["name"]
-            if "." in first_file:
-                ext = "." + first_file.split(".")[-1]
-    else:
-        # Fallback: try to extract from instruction
-        pattern_match = re.search(r'(\w+)[_\-]?#[\._]?(\w+)?', instruction, re.IGNORECASE)
-        if pattern_match:
-            prefix = pattern_match.group(1)
-            if pattern_match.group(2):
-                ext = "." + pattern_match.group(2)
-            else:
-                # Get extension from original file
-                first_file = sorted_files[0]["name"]
-                if "." in first_file:
-                    ext = "." + first_file.split(".")[-1]
-        else:
-            # Last resort: extract from first file's extension
-            first_file = sorted_files[0]["name"]
-            if "." in first_file:
-                parts = first_file.rsplit(".", 1)
-                prefix = "file"  # Default prefix
-                ext = "." + parts[1]
-            else:
-                # Can't extract pattern, return as-is
-                return plan
-    
-    # Create new rename plan based on sorted order
-    fixed_renames = []
-    for i, file_info in enumerate(sorted_files, start=1):
-        old_name = file_info["name"]
-        # Only include files that were in the original plan
-        if any(r["old"] == old_name for r in plan["renames"]):
-            # Generate new name with correct number
-            new_name = f"{prefix}_{i}{ext}"
-            fixed_renames.append({"old": old_name, "new": new_name})
-    
-    return {"renames": fixed_renames}
 
 
 def validate_rename_plan(
@@ -259,18 +178,22 @@ def validate_rename_plan(
                 raise ValueError(f"Illegal character '{char}' in new filename: {new}")
 
         # Check that new name doesn't already exist (unless it's being renamed from something else)
-        # This handles swaps/reversals where file1.txt → file2.txt and file2.txt → file1.txt
+        # This handles swaps/reversals and complex permutations
         new_path = directory / new
         
-        # Check if this is part of a swap (circular rename)
+        # Check if target is also being renamed (part of a permutation)
+        target_is_also_renamed = False
         is_swap = False
         for other_item in renames:
-            if other_item.get("old") == new and other_item.get("new") == old:
-                is_swap = True
+            if other_item.get("old") == new:
+                target_is_also_renamed = True
+                if other_item.get("new") == old:
+                    is_swap = True  # Circular swap
                 break
         
-        # Allow swaps, but block if target exists and isn't part of a swap
-        if new_path.exists() and new not in old_names and not is_swap:
+        # Allow if target is also being renamed (permutation) or is a swap
+        # But block if target exists and isn't part of the rename operation
+        if new_path.exists() and new not in old_names and not target_is_also_renamed:
             raise ValueError(f"Target filename already exists: {new}")
 
         old_names.add(old)
@@ -309,22 +232,40 @@ def execute_renames(
     renames: List[Dict],
     logger: logging.Logger
 ):
-    """Execute the rename operations, handling swaps with temporary names."""
+    """Execute the rename operations, handling conflicts with temporary names."""
     print("\nRenaming...")
     success_count = 0
     error_count = 0
     
-    # Detect swaps (circular renames) that need temp names
-    # Build a mapping to detect cycles
+    # Build a mapping for quick lookup
     rename_map = {item["old"]: item["new"] for item in renames}
+    
+    # Check if we need temp names:
+    # 1. Circular swaps (A→B, B→A)
+    # 2. Target filename already exists (and is also being renamed - complex permutation)
     needs_temp = False
-    for old_name, new_name in rename_map.items():
-        if rename_map.get(new_name) == old_name:
+    existing_targets = set()
+    
+    for item in renames:
+        old = item["old"]
+        new = item["new"]
+        new_path = directory / new
+        
+        # Check for circular swaps
+        if rename_map.get(new) == old:
             needs_temp = True
             break
+        
+        # Check if target already exists
+        if new_path.exists():
+            existing_targets.add(new)
+            # If target exists and is also being renamed, we need temp names
+            if new in rename_map:
+                needs_temp = True
+                break
     
-    if needs_temp:
-        # Use temporary names for swaps
+    if needs_temp or existing_targets:
+        # Use temporary names for all renames to avoid conflicts
         import uuid
         temp_renames = []
         final_renames = []
@@ -333,17 +274,23 @@ def execute_renames(
             old = item["old"]
             new = item["new"]
             
-            # Check if this is part of a swap
-            if rename_map.get(new) == old:
-                # This is a swap - use temp name
+            # Check if target exists or is part of a swap/permutation
+            new_path = directory / new
+            is_conflict = (
+                new_path.exists() or  # Target exists
+                new in rename_map  # Target is also being renamed (permutation)
+            )
+            
+            if is_conflict:
+                # Use temp name to avoid conflict
                 temp_name = f".temp_{uuid.uuid4().hex[:8]}_{new}"
                 temp_renames.append({"old": old, "new": temp_name})
                 final_renames.append({"old": temp_name, "new": new})
             else:
-                # Regular rename
+                # No conflict, can rename directly
                 temp_renames.append(item)
         
-        # Execute temp renames first
+        # Execute temp renames first (move all conflicting files to temp names)
         for item in temp_renames:
             old = item["old"]
             new = item["new"]
@@ -351,14 +298,21 @@ def execute_renames(
             dst = directory / new
             try:
                 src.rename(dst)
-                logger.info(f"RENAMED (temp): {old} -> {new}")
+                if new.startswith(".temp_"):
+                    logger.info(f"RENAMED (temp): {old} -> {new}")
+                else:
+                    print(f"[OK] {old} → {new}")
+                    logger.info(f"RENAMED: {old} -> {new}")
+                    success_count += 1
             except Exception as e:
                 print(f"[ERR] {old} → {new} ({e})")
                 logger.error(f"FAILED: {old} -> {new}: {e}")
                 error_count += 1
-                return
+                if new.startswith(".temp_"):
+                    # If temp rename failed, abort to avoid leaving files in bad state
+                    return
         
-        # Execute final renames
+        # Execute final renames (move from temp names to final names)
         for item in final_renames:
             old = item["old"]
             new = item["new"]
@@ -374,7 +328,7 @@ def execute_renames(
                 logger.error(f"FAILED: {old} -> {new}: {e}")
                 error_count += 1
     else:
-        # No swaps, execute normally
+        # No conflicts, execute normally
         for item in renames:
             old = item["old"]
             new = item["new"]
@@ -409,90 +363,112 @@ def main():
     
     logger = setup_logger()
     logger.info("Starting AI File Renamer")
-
-    # Get directory
-    directory = ask_directory()
-    logger.info(f"Selected directory: {directory}")
-
-    # Get instruction
-    instruction = ask_instruction()
-    logger.info(f"User instruction: {instruction}")
-
-    # Try to extract file extension filter from instruction
-    instruction_lower = instruction.lower()
-    extensions_to_filter = None
     
-    # Check for common file type mentions
-    if '.jpg' in instruction_lower or 'jpg' in instruction_lower or 'jpeg' in instruction_lower:
-        extensions_to_filter = ['.jpg', '.jpeg']
-    elif '.png' in instruction_lower or 'png' in instruction_lower:
-        extensions_to_filter = ['.png']
-    elif '.txt' in instruction_lower or 'text' in instruction_lower:
-        extensions_to_filter = ['.txt']
-    elif '.pdf' in instruction_lower or 'pdf' in instruction_lower:
-        extensions_to_filter = ['.pdf']
-    # Add more as needed
-    
-    # List files (with optional extension filter)
-    files_info = list_files_in_directory(directory, extensions_to_filter)
-    file_count = len(files_info)
-    logger.info(f"Found {file_count} files in directory" + (f" (filtered by extension: {extensions_to_filter})" if extensions_to_filter else ""))
-    
-    # Warn user if directory is very large
-    if file_count > 500:
-        print(f"\n⚠ Warning: Large directory detected ({file_count} files).")
-        print("Processing all files, but the LLM will see a sample to avoid token limits.")
-        print("The pattern will be applied to all matching files.")
-        response = input("Continue? [Y/n]: ").strip().lower()
-        if response == 'n':
-            print("Aborted.")
-            return
-    
-    # Extract just filenames for logging/display
-    files = [f["name"] for f in files_info]
+    print("=" * 60)
+    print("AI File Renaming Agent")
+    print("=" * 60)
+    print("Type 'q' at any prompt to quit.\n")
 
-    if not files:
-        print("No files found in that directory. Exiting.")
-        return
+    # Main loop - continue until user quits
+    while True:
+        # Get directory
+        directory = ask_directory()
+        if directory is None:
+            print("\nGoodbye!")
+            logger.info("User quit the program")
+            break
+        logger.info(f"Selected directory: {directory}")
 
-    # Step 1: get plan from LLM
-    try:
-        raw_plan = call_llm_for_rename_plan(directory, instruction, files_info)
-    except ValueError as e:
-        print(f"\nError generating rename plan: {e}")
-        logger.error(f"LLM plan generation failed: {e}")
-        return
-    except Exception as e:
-        print(f"\nUnexpected error: {e}")
-        logger.error(f"Unexpected error in LLM call: {e}", exc_info=True)
-        return
+        # Get instruction
+        instruction = ask_instruction()
+        if instruction is None:
+            print("\nReturning to directory selection...")
+            continue
+        logger.info(f"User instruction: {instruction}")
 
-    # Step 2: validate plan
-    try:
-        renames = validate_rename_plan(directory, raw_plan)
-        if not renames:
-            print("\nNo files matched your criteria. The LLM returned an empty rename plan.")
-            print(f"Files in directory: {', '.join(files[:10])}{'...' if len(files) > 10 else ''}")
-            logger.info("LLM returned empty rename plan")
-            return
-    except ValueError as e:
-        print(f"\nError in LLM plan: {e}")
-        print(f"\nTip: If you're trying to swap/reverse files, make sure the LLM generates a complete plan.")
-        logger.error(f"LLM plan validation failed: {e}")
-        return
+        # Try to extract file extension filter from instruction
+        instruction_lower = instruction.lower()
+        extensions_to_filter = None
+        
+        # Check for common file type mentions
+        if '.jpg' in instruction_lower or 'jpg' in instruction_lower or 'jpeg' in instruction_lower:
+            extensions_to_filter = ['.jpg', '.jpeg']
+        elif '.png' in instruction_lower or 'png' in instruction_lower:
+            extensions_to_filter = ['.png']
+        elif '.txt' in instruction_lower or 'text' in instruction_lower:
+            extensions_to_filter = ['.txt']
+        elif '.pdf' in instruction_lower or 'pdf' in instruction_lower:
+            extensions_to_filter = ['.pdf']
+        # Add more as needed
+        
+        # List files (with optional extension filter) - includes all metadata
+        files_info = list_files_in_directory(directory, extensions_to_filter)
+        file_count = len(files_info)
+        logger.info(f"Found {file_count} files in directory" + (f" (filtered by extension: {extensions_to_filter})" if extensions_to_filter else ""))
+        
+        # Warn user if directory is very large
+        if file_count > 500:
+            print(f"\n⚠ Warning: Large directory detected ({file_count} files).")
+            print("Processing all files, but the LLM will see a sample to avoid token limits.")
+            print("The pattern will be applied to all matching files.")
+            response = input("Continue? [Y/n]: ").strip().lower()
+            if response == 'n':
+                print("Aborted.")
+                print()  # Add blank line before next iteration
+                continue
+        
+        # Extract just filenames for logging/display
+        files = [f["name"] for f in files_info]
 
-    # Step 3: preview & confirm
-    if not preview_renames(renames):
-        print("\nAborted by user. No changes made.")
-        logger.info("User aborted rename operation.")
-        return
+        if not files:
+            print("No files found in that directory.")
+            print()  # Add blank line before next iteration
+            continue
 
-    # Step 4: execute
-    execute_renames(directory, renames, logger)
-    
-    # Show log file location
-    log_file = logger.handlers[0].baseFilename if logger.handlers else "unknown"
-    print(f"Actions logged to {log_file}")
+        # Step 1: get plan from LLM
+        try:
+            raw_plan = call_llm_for_rename_plan(directory, instruction, files_info)
+        except ValueError as e:
+            print(f"\nError generating rename plan: {e}")
+            logger.error(f"LLM plan generation failed: {e}")
+            print()  # Add blank line before next iteration
+            continue
+        except Exception as e:
+            print(f"\nUnexpected error: {e}")
+            logger.error(f"Unexpected error in LLM call: {e}", exc_info=True)
+            print()  # Add blank line before next iteration
+            continue
+
+        # Step 2: validate plan
+        try:
+            renames = validate_rename_plan(directory, raw_plan)
+            if not renames:
+                print("\nNo files matched your criteria. The LLM returned an empty rename plan.")
+                print(f"Files in directory: {', '.join(files[:10])}{'...' if len(files) > 10 else ''}")
+                logger.info("LLM returned empty rename plan")
+                print()  # Add blank line before next iteration
+                continue
+        except ValueError as e:
+            print(f"\nError in LLM plan: {e}")
+            print(f"\nTip: If you're trying to swap/reverse files, make sure the LLM generates a complete plan.")
+            logger.error(f"LLM plan validation failed: {e}")
+            print()  # Add blank line before next iteration
+            continue
+
+        # Step 3: preview & confirm
+        if not preview_renames(renames):
+            print("\nAborted by user. No changes made.")
+            logger.info("User aborted rename operation.")
+            print()  # Add blank line before next iteration
+            continue
+
+        # Step 4: execute
+        execute_renames(directory, renames, logger)
+        
+        # Show log file location
+        log_file = logger.handlers[0].baseFilename if logger.handlers else "unknown"
+        print(f"Actions logged to {log_file}")
+        print()  # Add blank line before next iteration
 
 
 if __name__ == "__main__":
