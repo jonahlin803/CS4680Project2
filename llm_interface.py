@@ -1,15 +1,17 @@
-"""LLM Interface for file renaming - focused module using OpenAI's mini model."""
+"""LLM Interface for file renaming - focused module using OpenAI's GPT-4o model."""
 import os
 import json
+import time
 from typing import List, Dict
 from dotenv import load_dotenv
 from openai import OpenAI
+from openai import RateLimitError, APIError
 
 # Load environment variables from .env file
 load_dotenv()
 
-# Use OpenAI's cost-effective mini model for JSON planning
-MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-4o-mini")  # Default to gpt-4o-mini
+# Use OpenAI's GPT-4o model for JSON planning
+MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-4o")  # Default to gpt-4o
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
@@ -119,32 +121,55 @@ def get_rename_plan_from_llm(
     
     user_prompt = build_user_prompt(directory, instruction, files)
 
-    try:
-        response = client.chat.completions.create(
-            model=MODEL_NAME,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_prompt},
-            ],
-            temperature=0.2,  # keep it deterministic-ish
-            response_format={"type": "json_object"},  # ask for valid JSON
-        )
-
-        content = response.choices[0].message.content
-        # `content` should be a JSON string
-        try:
-            data = json.loads(content)
-        except json.JSONDecodeError:
-            # Fallback: if somehow it returns junk, fail safely
-            return {"renames": []}
-
-        # Ensure the shape is at least predictable
-        if "renames" not in data or not isinstance(data["renames"], list):
-            return {"renames": []}
-
-        return data
+    # Retry logic for rate limiting and transient errors
+    max_retries = 3
+    base_delay = 1  # seconds
     
-    except Exception as e:
-        # Handle API errors gracefully
-        raise ValueError(f"LLM API error: {e}")
+    for attempt in range(max_retries):
+        try:
+            response = client.chat.completions.create(
+                model=MODEL_NAME,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": user_prompt},
+                ],
+                temperature=0.2,  # keep it deterministic-ish
+                response_format={"type": "json_object"},  # ask for valid JSON
+            )
+
+            content = response.choices[0].message.content
+            # `content` should be a JSON string
+            try:
+                data = json.loads(content)
+            except json.JSONDecodeError:
+                # Fallback: if somehow it returns junk, fail safely
+                return {"renames": []}
+
+            # Ensure the shape is at least predictable
+            if "renames" not in data or not isinstance(data["renames"], list):
+                return {"renames": []}
+
+            return data
+        
+        except RateLimitError as e:
+            # Handle rate limiting with exponential backoff
+            if attempt < max_retries - 1:
+                delay = base_delay * (2 ** attempt)  # Exponential backoff: 1s, 2s, 4s
+                time.sleep(delay)
+                continue
+            else:
+                raise ValueError(f"Rate limit exceeded after {max_retries} attempts: {e}")
+        
+        except APIError as e:
+            # Handle other API errors (may be transient)
+            if attempt < max_retries - 1 and e.status_code and e.status_code >= 500:
+                # Retry on server errors (5xx)
+                delay = base_delay * (2 ** attempt)
+                time.sleep(delay)
+                continue
+            else:
+                raise ValueError(f"LLM API error: {e}")
+    
+    # Should not reach here, but just in case
+    raise ValueError("Failed to get LLM response after retries")
 

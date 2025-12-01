@@ -1,34 +1,27 @@
-# AI Agent
+# AI File Renaming Agent
 
-An intelligent AI agent that receives output from Large Language Models (LLMs) and performs concrete actions based on that output. The agent can interpret LLM responses and execute various tasks across different domains including file operations, system commands, API calls, and more.
+An intelligent AI agent that uses Large Language Models (LLMs) to interpret natural language instructions and perform file renaming operations. The agent receives LLM output, parses it into actionable commands, and executes file renames with comprehensive safety checks and validation.
 
 ## Features
 
-- **Multi-Provider LLM Integration**: Supports OpenAI, Anthropic (Claude), and Google (Gemini) APIs
-- **Action Interpreter/Executor**: Parses LLM outputs and executes actions across multiple domains
-- **Terminal-Based UI**: Clean, user-friendly command-line interface with rich formatting
-- **Safety & Error Handling**: Validates actions, requires confirmations for destructive operations, and handles errors gracefully
-- **Comprehensive Logging**: All actions are logged for auditability
-- **Focused File Renaming Agent**: Specialized agent for intelligent file renaming with:
+- **LLM Integration**: Connects to OpenAI API (GPT-4o) for intelligent planning
+- **Action Interpreter/Executor**: Parses LLM JSON responses and executes file rename operations
+- **Terminal-Based UI**: Clean, user-friendly command-line interface
+- **Safety & Error Handling**: Validates all renames before execution, requires confirmations, and handles errors gracefully
+- **Comprehensive Logging**: All actions are logged to timestamped files for auditability
+- **Advanced File Renaming Capabilities**:
   - Date-based ordering (oldest/newest first)
   - Pattern preservation (leading zeros, underscores, etc.)
   - Large directory support (500+ files)
   - Automatic file type filtering
-  - Swap/reversal handling
+  - Swap/reversal handling with temporary names
 
 ## Project Structure
 
 ```
 CS4680Project2/
-├── main.py              # Main entry point (general AI agent)
-├── ai_file_renamer.py   # Focused file renaming agent (uses gpt-4o-mini)
-├── llm_interface.py     # Simple LLM interface for file renaming
-├── config.py            # Configuration management (for general agent)
-├── llm_integration.py   # LLM API integration (for general agent)
-├── action_executor.py   # Action parsing and execution
-├── ui.py                # User interface
-├── safety.py            # Safety checks and validation
-├── logger.py            # Logging module
+├── ai_file_renamer.py   # Main entry point - file renaming agent
+├── llm_interface.py     # LLM interface for OpenAI API integration
 ├── requirements.txt     # Python dependencies
 ├── .env.example         # Example environment variables
 └── README.md            # This file
@@ -51,11 +44,7 @@ CS4680Project2/
    cp .env.example .env
    
    # Edit .env and add your API key
-   # For file renaming agent (ai_file_renamer.py), you only need:
    OPENAI_API_KEY=your_actual_api_key_here
-   
-   # For general agent (main.py), also set:
-   LLM_PROVIDER=openai  # or anthropic, or google
    ```
    
    **Option 2: Using environment variables**
@@ -69,42 +58,29 @@ CS4680Project2/
    
    **Getting an API Key:**
    - **OpenAI**: Get your key from https://platform.openai.com/api-keys
-   - **Anthropic**: Get your key from https://console.anthropic.com/
-   - **Google**: Get your key from https://makersuite.google.com/app/apikey
    
    **Note**: The `.env` file is already in `.gitignore` and will not be committed to git.
 
 ## Usage
 
-### General AI Agent
-
-Run the general-purpose agent:
-```bash
-python main.py
-```
-
-The agent will start and display a welcome message. You can then interact with it using natural language:
-
-### File Renaming Agent
-
-For a focused file renaming use case, run:
+Run the file renaming agent:
 ```bash
 python ai_file_renamer.py
 ```
 
-This agent uses **OpenAI's `gpt-4o-mini` model** (a cost-effective "nano"-style model) specifically optimized for JSON planning tasks. It's perfect for this use case since we need fast, structured output rather than deep reasoning.
+This agent uses **OpenAI's `gpt-4o` model** for intelligent file rename planning. The model receives your natural language instruction, analyzes the files in the directory, and generates a structured rename plan.
 
 **Setup:**
 1. Set your OpenAI API key (see Installation section above for detailed instructions)
    - **Easiest**: Create a `.env` file with `OPENAI_API_KEY=your_key_here`
    - **Alternative**: Set environment variable `OPENAI_API_KEY`
 
-2. The agent uses `gpt-4o-mini` by default (configurable via `OPENAI_MODEL` in `.env`)
+2. The agent uses `gpt-4o` by default (configurable via `OPENAI_MODEL` in `.env`)
 
 **Workflow:**
 1. Asks for a directory to analyze
 2. Asks for a natural-language rename instruction
-3. Calls the LLM (gpt-4o-mini) to generate a structured rename plan as JSON
+3. Calls the LLM (gpt-4o) to generate a structured rename plan as JSON
 4. Validates the plan (checks file existence, prevents collisions, etc.)
 5. Shows a preview of planned renames
 6. Asks for confirmation before executing
@@ -155,28 +131,6 @@ Actions logged to logs/2025-11-28_15-32-10.log
 - For date ordering, files are pre-sorted and numbered sequentially
 - Pattern preservation ensures leading zeros and formatting are maintained
 
-### General Agent Examples
-
-The general agent supports various operations:
-
-- **File Operations**:
-  - "Create a file called test.txt with the content 'Hello World'"
-  - "Read the contents of README.md"
-  - "List all files in the current directory"
-  - "Delete the file test.txt"
-
-- **System Commands**:
-  - "Execute the command 'python --version'"
-  - "Run 'ls -la' to list files"
-
-- **Information Requests**:
-  - "What is Python?"
-  - "Explain how file systems work"
-
-- **Other Commands**:
-  - `help` - Show help information
-  - `exit` or `quit` - Exit the agent
-
 ## Safety Features
 
 The agent includes several safety mechanisms:
@@ -193,66 +147,39 @@ The agent includes several safety mechanisms:
 
 ## Components
 
-### LLM Integration Modules
-
-**`llm_interface.py`** (File Renaming Agent):
-- Focused interface for file renaming using OpenAI's `gpt-4o-mini`
+### LLM Interface (`llm_interface.py`)
+- Connects to OpenAI API using GPT-4o model
 - Uses `response_format={"type": "json_object"}` for structured JSON output
-- Simple, cost-effective approach optimized for JSON planning tasks
-
-**`llm_integration.py`** (General Agent):
-- Connects to LLM APIs (OpenAI, Anthropic, Google)
 - Handles API errors and rate limiting with retry logic
-- Provides structured prompts to guide LLM responses
+- Builds structured prompts with file metadata (creation dates, etc.)
 
-### Action Executor (`action_executor.py`)
-- Parses LLM JSON responses
-- Executes actions across different domains:
-  - File operations (read, write, create, delete, list)
-  - System commands
-  - API calls
-  - Database operations (placeholder)
-  - Information display
-
-### User Interface (`ui.py`)
-- Terminal-based interface using Rich library
-- Displays actions, results, and information
-- Handles user confirmations
-- Provides help and guidance
-
-### Safety Module (`safety.py`)
-- Validates actions before execution
-- Identifies dangerous patterns
-- Determines when confirmation is required
-- Sanitizes commands
-
-### Logger (`logger.py`)
-- Logs all actions, errors, and safety checks
-- Writes to both console and log file
-- Configurable log levels
+### File Renaming Agent (`ai_file_renamer.py`)
+- Main entry point for the application
+- Parses LLM JSON responses to extract rename plans
+- Validates all renames before execution (file existence, collisions, illegal characters)
+- Handles complex operations (swaps, reversals) with temporary names
+- Provides preview and confirmation before executing
+- Comprehensive logging to timestamped files
 
 ## Configuration
 
 Edit `.env` file to configure:
 
-- **LLM Provider**: Choose `openai`, `anthropic`, or `google`
-- **API Keys**: Set the appropriate API key for your chosen provider
-- **Model**: Specify which model to use (defaults provided)
-- **Logging**: Configure log file and log level
+- **API Key**: Set your `OPENAI_API_KEY`
+- **Model**: Optionally specify which model to use (defaults to `gpt-4o`)
+  - Example: `OPENAI_MODEL=gpt-4o`
 
 ## Logging
 
 All agent activities are logged to timestamped files in the `logs/` directory:
-- **General Agent**: `logs/agent.log`
-- **File Renamer**: `logs/YYYY-MM-DD_HH-MM-SS.log` (one per session)
+- Each session creates a new log file: `logs/YYYY-MM-DD_HH-MM-SS.log`
 
 Logs include:
-- Actions taken
+- All rename operations with before/after names
 - LLM requests and responses
 - Errors and exceptions
-- Safety checks
-- User confirmations
-- File rename operations with before/after names
+- Validation checks
+- User confirmations and cancellations
 
 ## Error Handling
 
@@ -288,9 +215,7 @@ The file renaming agent includes several advanced features:
 
 ## Limitations
 
-- Database operations are currently placeholders and not fully implemented
-- API calls require proper authentication setup
-- System commands are limited to basic operations for safety
+- Focused on file renaming operations only (does not handle system commands, API calls, or database operations)
 - Very large directories (>500 files) may require pattern-based instructions for best results
 - Some complex multi-step operations may require multiple interactions
 
@@ -299,14 +224,14 @@ The file renaming agent includes several advanced features:
 This project fully meets all requirements for CS4680 Project 2:
 
 ✅ **LLM Integration Module**
-- Connects to multiple LLM APIs (OpenAI, Anthropic, Google)
+- Connects to OpenAI API (GPT-4o)
 - Sends prompts and receives responses
-- Handles API errors and rate limiting
+- Handles API errors and rate limiting with retry logic
 
 ✅ **Action Interpreter/Executor**
-- Parses LLM output to extract actionable commands
-- Converts LLM responses into executable operations
-- Executes actions across different domains (file operations, system commands, API calls, database operations)
+- Parses LLM output to extract actionable commands (file rename plans)
+- Converts LLM responses into executable operations (file renames)
+- Executes file rename operations with validation and safety checks
 
 ✅ **User Interface**
 - Terminal-based interface
