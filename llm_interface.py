@@ -45,9 +45,9 @@ Core Rules:
    - If Y mentions "size", "largest", "smallest" → use the size field
    - Determine the direction (ascending/descending) from words like "oldest", "newest", "smallest", "largest", "reverse"
    - Sort ALL files by that criteria, then rename them sequentially (1, 2, 3, etc.) preserving the prefix/pattern
-10. Example: "order Imagen_x files by date modified" means:
+10. Example: "order Image_x files by date modified" means:
     - Sort all files by modification_time (oldest modified first, unless "newest" is mentioned)
-    - Rename them to Imagen_1.jpg, Imagen_2.jpg, etc. in that sorted order
+    - Rename them to Image_1.jpg, Image_2.jpg, etc. in that sorted order
 11. If the user's request is unclear or impossible, return an empty list: { "renames": [] }
 
 Follow the user's instruction precisely and apply it to all matching files. Handle any edge cases, swaps, reversals, or complex operations as needed to fulfill the request.

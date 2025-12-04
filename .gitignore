@@ -38,3 +38,8 @@ REQUIREMENTS_ASSESSMENT.md
 myPhone/
 test_files/
 
+# Unused files from earlier development
+action_executor.py
+llm_integration.py
+safety_checker.py
+
