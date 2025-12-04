@@ -23,7 +23,7 @@ CS4680Project2/
 ├── ai_file_renamer.py   # Main entry point - file renaming agent
 ├── llm_interface.py     # LLM interface for OpenAI API integration
 ├── requirements.txt     # Python dependencies
-├── .env.example         # Example environment variables
+├── logs/                # Timestamped log files (auto-generated)
 └── README.md            # This file
 ```
 

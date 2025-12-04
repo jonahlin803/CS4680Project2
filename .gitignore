@@ -28,3 +28,13 @@ logs/
 .DS_Store
 Thumbs.db
 
+# Documentation - for local reference only
+REQUIREMENTS_CHECK.md
+REQUIREMENTS_VERIFICATION.md
+COMPONENT_OVERVIEW.md
+REQUIREMENTS_ASSESSMENT.md
+
+# Test data - don't commit
+myPhone/
+test_files/
+
